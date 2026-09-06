@@ -1,33 +1,31 @@
 # bare-research
 
-Free web search and page scraping for your AI coding agents.
+The bare minimum your AI agent needs to research the web for $0.
 
-If you use coding agents like Hermes Agent, Claude Code, or Antigravity, you already know what happens when you ask them to search the web or read documentation: they either hallucinate, or they ask you to buy expensive API subscriptions.
-
-You do not need to pay for search. This tool connects your agent to free tiers from Tavily, Serper, and Firecrawl using plain Python with zero extra pip packages.
+Built for the **Bare Stack** community. Instead of paying for expensive search APIs or bloated multi-agent setups, this gives your agent a simple, modular stack to search Google, pull direct answers, and scrape documentation.
 
 ---
 
-## Free plans comparison
+## Free plans at a glance
 
-None of these require a credit card to get started.
+Put the free stuff right on top. None of these need a credit card.
 
 | Tool | Free allowance | Type | Best for |
 | :--- | :--- | :--- | :--- |
-| **Tavily** | 1,000 queries / month | Recurring monthly | Direct answers, summarized facts, instant context |
-| **Serper** | 2,500 queries | One-time on signup | Raw Google search, official links, Reddit lookups |
-| **Firecrawl** | 500 to 1,000 credits / month | Recurring monthly | Converting web pages and docs into clean Markdown |
-| **Exa** | $10 credit / month (~1,000 queries) | Recurring monthly | Finding engineering blogs, papers, and GitHub repos |
-| **You.com** | $100 trial credit | Trial on signup | Fast multi-source search index backup |
-| **Agent Browser** | Unlimited | Optional local fallback | Looking at pages with heavy JavaScript or Cloudflare |
+| **Tavily** | 1,000 queries / month | Recurring | Instant direct answers and clean summaries in 1 shot |
+| **Serper** | 2,500 queries | Signup grant | Raw Google index, official docs, Reddit lookups |
+| **Firecrawl** | 500 to 1,000 credits / month | Recurring | Turning messy URLs into clean Markdown |
+| **Exa** | $10 credit / month (~1,000 queries) | Recurring | Finding research papers, repos, and engineering blogs |
+| **You.com** | $100 trial credit | Signup grant | Fast multi-source search index backup |
+| **Agent Browser** | Unlimited | Local fallback | Cloudflare-protected pages (uses local RAM/CPU) |
+
+**Starter combo:** Grab **Tavily** (for instant answers) and **Serper** (for Google and Reddit lookups). That covers 95% of agent tasks.
 
 ---
 
-## Quick setup: Copy-pasteable .env
+## Quick setup: .env
 
-You can create a `.env` or `.env.bare-research` file in whatever folder your agent is working in. The script finds it automatically.
-
-Here is the template you can copy-paste directly:
+Create a `.env` or `.env.bare-research` file in your workspace or project folder. Paste whatever keys you have:
 
 ```env
 TAVILY_API_KEY=
@@ -37,24 +35,66 @@ EXA_API_KEY=
 YOU_API_KEY=
 ```
 
-You do not need all of them to start. Even just pasting a free Tavily key is enough to get working web search.
+No comments needed here since the table above explains what each one does. Even having just one key is enough to get started.
 
 ---
 
-## What each tool does
+## Install
 
-- **Tavily (Start with this):** Ask a question, get an actual answer plus links in one shot. You get 1,000 free searches every month without a credit card.
-- **Serper:** Raw Google search. Good for finding official docs or reading Reddit discussions without cookies (just search `site:reddit.com/r/LocalLLaMA <topic>`). You get 2,500 free searches on signup without a card.
-- **Firecrawl:** Paste a URL, get clean Markdown back. It strips ads, navigation bars, and cookie banners so your agent only reads the actual content. You get 500 to 1,000 free credits a month.
-- **Agent Browser (Optional fallback):** If a website blocks normal scrapers with Cloudflare, you can use local Chrome to look at the page. We do not force this install. If you ever need it, just tell your agent "install agent-browser" or run `npm install -g agent-browser` yourself.
+Install directly into your agent (Hermes, Claude Code, Antigravity, OpenCode, Cline) using the `skills` CLI:
+
+```bash
+npx skills add https://github.com/paulablaza/bare-research --skill bare-research
+```
+
+Or clone it manually:
+```bash
+git clone https://github.com/paulablaza/bare-research.git
+```
 
 ---
 
-## Testing in your terminal
+## How it works
+
+```mermaid
+flowchart TD
+    A[AI Coding Agent] -->|Needs Answers / Facts| B[Search Flow]
+    A -->|Needs Webpage Content| C[Scrape Flow]
+
+    subgraph Search ["Free Search Fallback"]
+        B --> D[1. Tavily: Direct Answer + Sources]
+        D -.->|If missing / limit| E[2. Serper: Google & Reddit Search]
+        E -.->|If missing / limit| F[3. Exa: Neural Tech Search]
+        F -.->|If missing / limit| G[4. You.com: Web Index]
+    end
+
+    subgraph Scrape ["Free Page Extraction"]
+        C --> H[Firecrawl: Clean Markdown]
+        H -.->|If no key| I[Basic HTTP Fetch]
+    end
+
+    subgraph Browser ["Optional Fallback"]
+        I -.->|Cloudflare Blocked| J[Agent Browser: Local Chrome]
+        style J stroke-dasharray: 5 5
+    end
+```
+
+---
+
+## What "Bare" means
+
+"Bare" is built for the Bare Stack community:
+1. **Zero pip dependencies:** Pure Python standard library (`urllib`, `json`, `argparse`). Runs instantly on any machine or container.
+2. **Modular combos:** You can build your own custom research skills on top of this. For example, use Serper with `site:reddit.com/r/LocalLLaMA` to build a Reddit research skill that finds threads and grabs the data without needing paid Reddit API keys. Or pair Firecrawl with your own doc crawler.
+3. **Hands-off security:** Never auto-installs system packages behind your back and never spawns silent background browsers.
+
+---
+
+## Terminal usage
 
 Search:
 ```bash
-python research.py search "what is Hermes Agent Bot Mode"
+python research.py search "how to configure Hermes Agent Bot Mode"
 ```
 
 Google / Reddit search:
@@ -62,39 +102,33 @@ Google / Reddit search:
 python research.py search "site:reddit.com/r/LocalLLaMA DeepSeek R1" --provider serper
 ```
 
-Scrape a URL:
+Scrape a URL to clean Markdown:
 ```bash
 python research.py scrape "https://github.com/NousResearch/hermes-agent"
 ```
 
-Optional browser inspection (for Cloudflare pages):
+Optional browser inspection (for Cloudflare-protected pages):
 ```bash
 python research.py scrape "https://protected-site.com" --provider browser
 ```
 
 ---
 
-## Adding this to your agent
+## Agent Browser note
 
-- **Hermes Agent:** Copy `bare-research` into `~/.hermes/skills/bare-research`. Hermes reads `SKILL.md` and uses it automatically.
-- **Claude Code:** Reference `research.py` directly in your terminal or prompt instructions.
-- **Antigravity / OpenCode:** Drop `bare-research` into your workspace `.agents/skills/` directory.
+Agent Browser is strictly an optional fallback for pages blocked by Cloudflare. Because running a local Chrome instance consumes RAM and CPU, the script never launches it automatically.
 
----
-
-## Why this is built hands-off
-
-1. **No surprise installs:** The script will never install packages behind your back. If you want browser fallback, you decide when to install it.
-2. **No background browser popups:** The script never launches Chrome on its own during auto search or scrape. You have to pass `--provider browser` on purpose.
-3. **Clean security audits:** Built with standard library Python (`urllib`, `json`, `argparse`). No `node_modules`, no `requirements.txt`. It passes audit tools like Socket, Snyk, and Gen Agent Trust Hub with zero alerts.
+If you want browser fallback, install it manually or tell your agent:
+```bash
+npm install -g agent-browser
+```
 
 ---
 
-## How we can improve this skill (Roadmap)
+## How we can level this skill up
 
-Ideas to make this even better in future updates:
-
-- **Local Markdown caching:** Save scraped web pages to a local `cache/` folder so if your agent reads the same documentation page 5 times, it uses 0 API credits.
-- **Zero-key fallback (DuckDuckGo):** Add an automatic free fallback using public search when you do not have any API keys configured at all.
-- **Multi-page doc scraper:** Give it a root documentation URL and let it scrape the top 3 sub-pages in one shot so your agent gets complete library context.
-- **Academic paper search:** Plug in Semantic Scholar and arXiv free endpoints (100% free forever, no key required) for deep research mode.
+Here are practical ideas to expand this skill:
+- **Zero-key fallback (DuckDuckGo / SearXNG):** Search the web out of the box even before adding an API key.
+- **Local file cache (`.cache/research/`):** Cache search queries and page scrapes locally so agents do not burn query credits when asking about the same repo twice.
+- **Multi-page doc crawler:** Given a docs link (e.g. `/docs/quickstart`), follow local child links and assemble a single clean Markdown reference for the agent.
+- **Reddit JSON fetcher:** Direct `.json` endpoint parsing for Reddit threads found via Serper, bypassing browser scrapers entirely.

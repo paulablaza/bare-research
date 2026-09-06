@@ -5,3 +5,7 @@ __pycache__/
 *.py[cod]
 .DS_Store
 Thumbs.db
+AGENTS.md
+agents.md
+dist/
+*.skill

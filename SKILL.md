@@ -1,6 +1,9 @@
 ---
 name: bare-research
 description: The $0 research, search, and page scraping skill for AI coding agents. Uses 100% free API keys (Tavily, Serper, Firecrawl, Exa, You.com) with automatic fallback and optional local Agent Browser inspection for bot-protected pages.
+metadata:
+  repository: https://github.com/paulablaza/bare-research
+  install: npx skills add https://github.com/paulablaza/bare-research --skill bare-research
 ---
 
 # Bare-Research: The $0 Agent Research Stack
