@@ -2,8 +2,8 @@
 name: bare-research
 description: Simple, dependency-free web search and page scraping for AI coding agents. Uses available free search keys (Tavily, Serper, Exa, You.com) with automatic fallback, and page extraction (Firecrawl, basic HTTP).
 metadata:
-  repository: https://github.com/paulablaza/bare-research
-  install: npx skills add https://github.com/paulablaza/bare-research --skill bare-research
+  repository: https://github.com/barestack-labs/bare-research
+  install: npx skills add https://github.com/barestack-labs/bare-research --skill bare-research
 ---
 
 # bare-research

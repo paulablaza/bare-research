@@ -10,7 +10,7 @@ Runs on standard Python 3. No `pip install` required.
 
 Most web search tools for AI agents either require heavy python packages, paid subscriptions, or complex multi-agent frameworks.
 
-`bare-research` is a single Python script (`research.py`) that talks directly to common search and scrape APIs using Python''s standard `urllib`. You can drop it into any project folder or agent workspace, plug in whichever free API keys you have, and start researching.
+`bare-research` is a single Python script (`research.py`) that talks directly to common search and scrape APIs using Python''s standard library. You can drop it into any project folder or agent workspace, plug in whichever free API keys you have, and start researching.
 
 ---
 
@@ -53,13 +53,13 @@ FIRECRAWL_API_KEY=
 Install as an agent skill:
 
 ```bash
-npx skills add https://github.com/paulablaza/bare-research --skill bare-research
+npx skills add https://github.com/barestack-labs/bare-research --skill bare-research
 ```
 
 Or clone directly into your workspace:
 
 ```bash
-git clone https://github.com/paulablaza/bare-research.git
+git clone https://github.com/barestack-labs/bare-research.git
 ```
 
 ---
@@ -107,6 +107,15 @@ python research.py scrape "https://protected-site.com" --provider browser
 
 ---
 
+## Community & Barestack Labs
+
+`bare-research` is part of the **Barestack Labs** open-source collective:
+* **Discord Community**: [dsc.gg/barestack](https://dsc.gg/barestack) — Join other builders and share free AI agent workflows.
+* **Barestack Labs GitHub**: [github.com/barestack-labs](https://github.com/barestack-labs) — Lightweight tools and free provider directories.
+* **YouTube Tutorials**: [youtube.com/@paulablaza](https://youtube.com/@paulablaza)
+
+---
+
 ## License
 
-MIT License - Copyright (c) 2026 Paul Ablaza. See [LICENSE](LICENSE) for details.
+MIT License - Copyright (c) 2026 Paul Ablaza and Barestack Labs contributors. See [LICENSE](LICENSE) for details.
