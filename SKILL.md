@@ -1,89 +1,81 @@
----
+﻿---
 name: bare-research
-description: The $0 research, search, and page scraping skill for AI coding agents. Uses 100% free API keys (Tavily, Serper, Firecrawl, Exa, You.com) with automatic fallback and optional local Agent Browser inspection for bot-protected pages.
+description: Simple, dependency-free web search and page scraping for AI coding agents. Uses available free search keys (Tavily, Serper, Exa, You.com) with automatic fallback, and page extraction (Firecrawl, basic HTTP).
 metadata:
   repository: https://github.com/paulablaza/bare-research
   install: npx skills add https://github.com/paulablaza/bare-research --skill bare-research
 ---
 
-# Bare-Research: The $0 Agent Research Stack
+# bare-research
 
-A lightweight, portable research and scraping skill designed for AI agents (Hermes Agent, Claude Code, Antigravity, OpenCode).
+A lightweight research and scraping skill for coding agents (Hermes, Claude Code, Antigravity, OpenCode).
 
-Built to comply with strict security audits (Gen Agent Trust Hub, Socket, Snyk):
-- Zero external package dependencies (pure Python standard library).
-- Zero automated package installation (hands-off policy).
-- Zero silent background browser processes.
-
----
-
-## Core Capabilities
-
-1. **Web Search (`search`):** Query the web and return summarized facts and direct source links. Automatically tries Tavily (direct answers), then Serper (Google index), then Exa (neural search).
-2. **Page Scraping (`scrape`):** Extract clean, ad-free Markdown from any URL using Firecrawl API or lightweight direct fetch.
-3. **Optional Browser Inspection (`browser`):** Uses local Chrome via `agent-browser` only when explicitly invoked by the user for bot-protected pages.
+- Standard library Python only (no external packages or build steps).
+- Never auto-installs system packages or spawns background browsers automatically.
+- Falls back automatically between configured search keys.
 
 ---
 
-## Agent Usage Instructions
+## Capabilities
 
-When you need fresh information from the web or need to read the contents of a specific URL, run `research.py` via your bash or terminal tool.
+1. **Web Search (`search`):** Search the web for documentation, solutions, and facts. Tries Tavily (answers + sources), then Serper (Google index), Exa, and You.com.
+2. **Page Scraping (`scrape`):** Extract page text using Firecrawl or lightweight built-in HTTP fetch.
+3. **Manual Browser (`browser`):** Uses local Chrome via `agent-browser` only when explicitly requested for sites with heavy bot protection.
 
-### 1. Web Search (Facts, News, Documentation, Alternatives)
+---
 
+## Usage
+
+Run `research.py` directly from the terminal or via your bash tool:
+
+### Web Search
 ```bash
-# Auto search (uses Tavily -> Serper -> Exa)
-python research.py search "how to configure Hermes Agent Bot Mode"
+# Auto search (tries available keys in order: Tavily -> Serper -> Exa -> You.com)
+python research.py search "how to configure Hermes Agent"
 
-# Force specific provider
-python research.py search "best free AI APIs 2026" --provider tavily
-python research.py search "site:reddit.com/r/LocalLLaMA DeepSeek R1" --provider serper
-python research.py search "high quality technical blog posts on MoE" --provider exa
+# Use a specific provider
+python research.py search "site:reddit.com/r/LocalLLaMA Qwen 2.5" --provider serper
+python research.py search "what is the latest Python release" --provider tavily
+python research.py search "machine learning research papers" --provider exa
 ```
 
-### 2. URL Scraping (Reading Docs, Articles, Repos)
-
+### Web Scraping
 ```bash
-# Auto scrape (uses Firecrawl -> basic HTTP)
+# Auto scrape (tries Firecrawl first, then basic HTTP)
 python research.py scrape "https://example.com/docs"
 
-# Force Firecrawl clean markdown
-python research.py scrape "https://example.com/article" --provider firecrawl
+# Force basic text fetch (no API keys needed)
+python research.py scrape "https://example.com/article" --provider basic
 ```
 
 ---
 
-## Browser and Security Rules
+## Browser Fallback Rules
 
-### 1. Hands-off installation (Never auto-install)
-If `agent-browser` is not installed on the user's computer, never run `npm install -g agent-browser` or download binaries automatically.
-
-Tell the user:
-> *"Notice: This page has bot protection. To inspect it using headless Chrome, you can install Agent Browser by running: `npm install -g agent-browser`."*
-
-### 2. Never silently launch Chrome
-Browser scraping never runs automatically. If you run `--provider browser` at the user's request, print a notice first:
-> *"Notice: Launching local headless Chrome via Agent Browser to inspect [URL]..."*
+- Never run `npm install -g agent-browser` automatically. If a page fails due to bot protection and the user needs browser extraction, notify the user:
+  `Page is protected by Cloudflare. To inspect locally using Chrome, install agent-browser: npm install -g agent-browser`
+- Never launch browser extraction silently. Only use `--provider browser` if explicitly requested.
 
 ---
 
-## Environment Configuration
+## Environment Keys
 
-Keys are read from `.env` in the current working directory, project folder, or user home folder:
+Keys are read from `.env` in the current workspace, script directory, or parent folders:
 
-```bash
-# Tavily: 1,000 free searches / month (Recommended primary search key)
-TAVILY_API_KEY=tvly-...
+```env
+# Tavily: Direct answers and sources (https://tavily.com)
+TAVILY_API_KEY=
 
-# Serper: 2,500 free Google searches on signup (Recommended for Reddit / official links)
-SERPER_API_KEY=...
+# Serper: Google search index (https://serper.dev)
+SEARCH_SERPER_API_KEY=
+# Note: SERPER_API_KEY is also accepted
 
-# Firecrawl: 500-1,000 free scrape credits / month (Recommended for page extraction)
-FIRECRAWL_API_KEY=fc-...
+# Firecrawl: Clean Markdown extraction (https://firecrawl.dev)
+FIRECRAWL_API_KEY=
 
-# Exa: $10/month free credit (Neural semantic search)
-EXA_API_KEY=...
+# Exa: Semantic technical search (https://exa.ai)
+EXA_API_KEY=
 
-# You.com: $100 trial credit (Fast web index)
-YOU_API_KEY=...
+# You.com: Web index fallback (https://you.com)
+YOU_API_KEY=
 ```

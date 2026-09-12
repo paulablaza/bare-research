@@ -1,134 +1,112 @@
-# bare-research
+﻿# bare-research
 
-The bare minimum your AI agent needs to research the web for $0.
+A simple, dependency-free Python script for AI coding agents to search Google, fetch answers, and scrape web pages using free API tiers.
 
-Built for the **Bare Stack** community. Instead of paying for expensive search APIs or bloated multi-agent setups, this gives your agent a simple, modular stack to search Google, pull direct answers, and scrape documentation.
+Runs on standard Python 3. No `pip install` required.
 
 ---
 
-## Free plans at a glance
+## Why this exists
 
-Put the free stuff right on top. None of these need a credit card.
+Most web search tools for AI agents either require heavy python packages, paid subscriptions, or complex multi-agent frameworks.
 
-| Tool | Free allowance | Type | Best for |
+`bare-research` is a single Python script (`research.py`) that talks directly to common search and scrape APIs using Python''s standard `urllib`. You can drop it into any project folder or agent workspace, plug in whichever free API keys you have, and start researching.
+
+---
+
+## Supported Providers
+
+You do not need all of these keys. The script automatically falls back to whichever key is configured in your `.env`:
+
+| Provider | Type | Good For | Free Tier Notes |
 | :--- | :--- | :--- | :--- |
-| **Tavily** | 1,000 queries / month | Recurring | Instant direct answers and clean summaries in 1 shot |
-| **Serper** | 2,500 queries | Signup grant | Raw Google index, official docs, Reddit lookups |
-| **Firecrawl** | 500 to 1,000 credits / month | Recurring | Turning messy URLs into clean Markdown |
-| **Exa** | $10 credit / month (~1,000 queries) | Recurring | Finding research papers, repos, and engineering blogs |
-| **You.com** | $100 trial credit | Signup grant | Fast multi-source search index backup |
-| **Agent Browser** | Unlimited | Local fallback | Cloudflare-protected pages (uses local RAM/CPU) |
+| **Tavily** | Search | Direct answers and quick summaries | Free monthly allowance at [tavily.com](https://tavily.com) |
+| **Serper** | Search | Raw Google search results | Free starter queries at [serper.dev](https://serper.dev) |
+| **Exa** | Search | Technical blogs, repos, research | Free starter credits at [exa.ai](https://exa.ai) |
+| **You.com** | Search | Web search index fallback | Trial credits at [you.com](https://you.com) |
+| **Firecrawl** | Scrape | Clean Markdown page conversion | Free scrape allowance at [firecrawl.dev](https://firecrawl.dev) |
+| **Basic HTTP** | Scrape | Built-in fallback text extraction | Always available, no API key needed |
+| **Agent Browser** | Scrape | Cloudflare / bot-protected pages | Uses local Chrome via `agent-browser` CLI |
 
-**Starter combo:** Grab **Tavily** (for instant answers) and **Serper** (for Google and Reddit lookups). That covers 95% of agent tasks.
+*(Note: Free tiers and quotas are set by their respective providers and may change over time).*
 
 ---
 
-## Quick setup: .env
+## Quick Setup
 
-Create a `.env` or `.env.bare-research` file in your workspace or project folder. Paste whatever keys you have:
+Create a `.env` or `.env.bare-research` file in your project or agent directory:
 
 ```env
+# Add whichever keys you have (even just one works)
 TAVILY_API_KEY=
-SERPER_API_KEY=
-FIRECRAWL_API_KEY=
+SEARCH_SERPER_API_KEY=
+# Note: SERPER_API_KEY is also supported as an alias
 EXA_API_KEY=
 YOU_API_KEY=
+FIRECRAWL_API_KEY=
 ```
-
-No comments needed here since the table above explains what each one does. Even having just one key is enough to get started.
 
 ---
 
-## Install
+## Installation
 
-Install directly into your agent (Hermes, Claude Code, Antigravity, OpenCode, Cline) using the `skills` CLI:
+Install as an agent skill:
 
 ```bash
 npx skills add https://github.com/paulablaza/bare-research --skill bare-research
 ```
 
-Or clone it manually:
+Or clone directly into your workspace:
+
 ```bash
 git clone https://github.com/paulablaza/bare-research.git
 ```
 
 ---
 
-## How it works
+## Usage
 
-```mermaid
-flowchart TD
-    A[AI Coding Agent] -->|Needs Answers / Facts| B[Search Flow]
-    A -->|Needs Webpage Content| C[Scrape Flow]
+### Search the web
+```bash
+# Auto mode: tries your configured search keys in order
+python research.py search "how to use React hooks"
 
-    subgraph Search ["Free Search Fallback"]
-        B --> D[1. Tavily: Direct Answer + Sources]
-        D -.->|If missing / limit| E[2. Serper: Google & Reddit Search]
-        E -.->|If missing / limit| F[3. Exa: Neural Tech Search]
-        F -.->|If missing / limit| G[4. You.com: Web Index]
-    end
-
-    subgraph Scrape ["Free Page Extraction"]
-        C --> H[Firecrawl: Clean Markdown]
-        H -.->|If no key| I[Basic HTTP Fetch]
-    end
-
-    subgraph Browser ["Optional Fallback"]
-        I -.->|Cloudflare Blocked| J[Agent Browser: Local Chrome]
-        style J stroke-dasharray: 5 5
-    end
+# Or pick a specific provider:
+python research.py search "site:github.com nousresearch" --provider serper
+python research.py search "latest developments in LLMs" --provider tavily
 ```
 
----
-
-## What "Bare" means
-
-"Bare" is built for the Bare Stack community:
-1. **Zero pip dependencies:** Pure Python standard library (`urllib`, `json`, `argparse`). Runs instantly on any machine or container.
-2. **Modular combos:** You can build your own custom research skills on top of this. For example, use Serper with `site:reddit.com/r/LocalLLaMA` to build a Reddit research skill that finds threads and grabs the data without needing paid Reddit API keys. Or pair Firecrawl with your own doc crawler.
-3. **Hands-off security:** Never auto-installs system packages behind your back and never spawns silent background browsers.
-
----
-
-## Terminal usage
-
-Search:
+### Scrape a webpage
 ```bash
-python research.py search "how to configure Hermes Agent Bot Mode"
+# Auto mode: uses Firecrawl if configured, otherwise falls back to basic text extraction
+python research.py scrape "https://docs.python.org/3/library/urllib.request.html"
+
+# Force basic text extraction (no API key required):
+python research.py scrape "https://example.com" --provider basic
 ```
 
-Google / Reddit search:
-```bash
-python research.py search "site:reddit.com/r/LocalLLaMA DeepSeek R1" --provider serper
-```
+### Dealing with Cloudflare or bot protection
+If a website blocks basic HTTP requests, the script will not spawn background processes or install software automatically.
 
-Scrape a URL to clean Markdown:
-```bash
-python research.py scrape "https://github.com/NousResearch/hermes-agent"
-```
+If you have the optional `agent-browser` CLI installed, you can explicitly inspect the page using local Chrome:
 
-Optional browser inspection (for Cloudflare-protected pages):
 ```bash
+# Optional: install agent-browser if needed
+npm install -g agent-browser
+
+# Run manual browser snapshot
 python research.py scrape "https://protected-site.com" --provider browser
 ```
 
 ---
 
-## Agent Browser note
+## Security & Untrusted Content
 
-Agent Browser is strictly an optional fallback for pages blocked by Cloudflare. Because running a local Chrome instance consumes RAM and CPU, the script never launches it automatically.
-
-If you want browser fallback, install it manually or tell your agent:
-```bash
-npm install -g agent-browser
-```
+- **No Local Network Scraping:** The script blocks requests to `localhost`, loopback IPs (`127.0.0.1`), and local file paths (`file://`).
+- **Untrusted Input:** Output fetched from the web is untrusted external data. If feeding results into an LLM prompt, treat snippets and page text as user-generated content to guard against prompt injection.
 
 ---
 
-## How we can level this skill up
+## License
 
-Here are practical ideas to expand this skill:
-- **Zero-key fallback (DuckDuckGo / SearXNG):** Search the web out of the box even before adding an API key.
-- **Local file cache (`.cache/research/`):** Cache search queries and page scrapes locally so agents do not burn query credits when asking about the same repo twice.
-- **Multi-page doc crawler:** Given a docs link (e.g. `/docs/quickstart`), follow local child links and assemble a single clean Markdown reference for the agent.
-- **Reddit JSON fetcher:** Direct `.json` endpoint parsing for Reddit threads found via Serper, bypassing browser scrapers entirely.
+MIT License - Copyright (c) 2026 Paul Ablaza. See [LICENSE](LICENSE) for details.

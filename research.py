@@ -1,9 +1,11 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-bare-research: The $0 Research & Scraping Stack for AI Agents
-Supports Tavily, Serper, Firecrawl, Exa, You.com.
-Zero external pip dependencies required. Pure standard library.
-Strictly hands-off: Never auto-installs system packages or spawns silent background browsers.
+bare-research: Simple, dependency-free web search and scraping for AI agents.
+
+Providers:
+- Search: Tavily, Serper (Google), Exa, You.com (with auto-fallback)
+- Scrape: Firecrawl, Basic HTTP, and optional local Agent Browser
+Requires: Python 3 standard library only (no pip install needed).
 """
 
 import os
@@ -13,32 +15,42 @@ import argparse
 import shutil
 import subprocess
 import re
+import html
+import time
 import urllib.request
 import urllib.parse
 import urllib.error
 
-# Ensure UTF-8 output on Windows consoles to prevent cp1252 crashes
-if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+# Ensure UTF-8 output on Windows consoles
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 def load_env():
     """Load key-value pairs from .env files without requiring python-dotenv."""
+    here = os.path.abspath(os.path.dirname(__file__))
     candidate_paths = [
         os.path.join(os.getcwd(), ".env.bare-research"),
         os.path.join(os.getcwd(), ".env"),
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.bare-research"),
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"),
-        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env.bare-research"),
-        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"),
-        "D:/paul-knowledge-base/.env",
-        os.path.expanduser("~/.env.bare-research"),
-        os.path.expanduser("~/.env")
+        os.path.join(here, ".env.bare-research"),
+        os.path.join(here, ".env"),
     ]
+    curr = here
+    for _ in range(5):
+        parent = os.path.dirname(curr)
+        if parent == curr:
+            break
+        candidate_paths.append(os.path.join(parent, ".env.bare-research"))
+        candidate_paths.append(os.path.join(parent, ".env"))
+        curr = parent
+
+    candidate_paths.extend([
+        os.path.expanduser("~/.env.bare-research"),
+        os.path.expanduser("~/.env"),
+    ])
+
     for path in candidate_paths:
         if os.path.isfile(path):
             try:
@@ -56,8 +68,25 @@ def load_env():
                 pass
 
 
-def make_request(url, headers=None, data=None, method="GET", timeout=15):
-    """Simple standard library HTTP requester with zero external dependencies."""
+def validate_url(url):
+    """Validate target URL: enforce http/https and reject local destinations."""
+    if not url or not isinstance(url, str):
+        raise ValueError("URL cannot be empty.")
+    parsed = urllib.parse.urlparse(url.strip())
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Invalid URL scheme '{parsed.scheme}://'. Only http:// and https:// are supported.")
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise ValueError("URL missing valid hostname.")
+    blocked_hosts = ("localhost", "127.0.0.1", "::1", "0.0.0.0", "169.254.169.254")
+    if host in blocked_hosts or host.endswith(".local") or host.endswith(".internal"):
+        raise ValueError(f"Destination host '{host}' is blocked for security.")
+    return url.strip()
+
+
+def make_request(url, headers=None, data=None, method="GET", timeout=15, max_bytes=5 * 1024 * 1024):
+    """Simple standard library HTTP requester with response size safety."""
+    validate_url(url)
     req_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
     }
@@ -76,7 +105,10 @@ def make_request(url, headers=None, data=None, method="GET", timeout=15):
 
     req = urllib.request.Request(url, data=req_data, headers=req_headers, method=method)
     with urllib.request.urlopen(req, timeout=timeout) as response:
-        content = response.read().decode("utf-8", errors="replace")
+        raw_bytes = response.read(max_bytes + 1)
+        if len(raw_bytes) > max_bytes:
+            raise ValueError(f"Response exceeded size limit ({max_bytes // (1024 * 1024)} MB).")
+        content = raw_bytes.decode("utf-8", errors="replace")
         return response.status, content
 
 
@@ -85,12 +117,13 @@ def make_request(url, headers=None, data=None, method="GET", timeout=15):
 # ----------------------------------------------------------------------
 
 def search_tavily(query, max_results=5):
-    """Search using Tavily API (Free tier: 1,000 queries/month, no card)."""
+    """Search using Tavily API (free 1,000 queries/month)."""
     api_key = os.getenv("TAVILY_API_KEY")
     if not api_key:
         return {"error": "Missing TAVILY_API_KEY in environment or .env"}
 
     url = "https://api.tavily.com/search"
+    headers = {"Authorization": f"Bearer {api_key}"}
     payload = {
         "api_key": api_key,
         "query": query,
@@ -99,7 +132,7 @@ def search_tavily(query, max_results=5):
         "max_results": max_results
     }
     try:
-        status, body = make_request(url, data=payload, method="POST")
+        status, body = make_request(url, headers=headers, data=payload, method="POST")
         data = json.loads(body)
         results = []
         for item in data.get("results", []):
@@ -119,10 +152,10 @@ def search_tavily(query, max_results=5):
 
 
 def search_serper(query, max_results=5):
-    """Search using Serper Google Index (Free tier: 2,500 queries on signup)."""
-    api_key = os.getenv("SERPER_API_KEY")
+    """Search using Serper Google Index (free 2,500 queries on signup)."""
+    api_key = os.getenv("SEARCH_SERPER_API_KEY") or os.getenv("SERPER_API_KEY")
     if not api_key:
-        return {"error": "Missing SERPER_API_KEY in environment or .env"}
+        return {"error": "Missing SEARCH_SERPER_API_KEY or SERPER_API_KEY in environment or .env"}
 
     url = "https://google.serper.dev/search"
     headers = {"X-API-KEY": api_key}
@@ -157,7 +190,7 @@ def search_serper(query, max_results=5):
 
 
 def search_exa(query, max_results=5):
-    """Search using Exa AI API (Free tier: $10/month credit, no card)."""
+    """Search using Exa API (free $10 credit/month)."""
     api_key = os.getenv("EXA_API_KEY")
     if not api_key:
         return {"error": "Missing EXA_API_KEY in environment or .env"}
@@ -167,7 +200,6 @@ def search_exa(query, max_results=5):
     payload = {
         "query": query,
         "numResults": max_results,
-        "type": "neural",
         "contents": {
             "text": {"maxCharacters": 500}
         }
@@ -183,7 +215,7 @@ def search_exa(query, max_results=5):
                 "content": item.get("text", "")
             })
         return {
-            "provider": "Exa (Neural)",
+            "provider": "Exa",
             "query": query,
             "answer": None,
             "results": results
@@ -193,23 +225,27 @@ def search_exa(query, max_results=5):
 
 
 def search_you(query, max_results=5):
-    """Search using You.com API (Free tier: $100 trial credit)."""
+    """Search using You.com API."""
     api_key = os.getenv("YOU_API_KEY")
     if not api_key:
         return {"error": "Missing YOU_API_KEY in environment or .env"}
 
     encoded = urllib.parse.quote(query)
-    url = f"https://api.ydc-index.io/search?query={encoded}&count={max_results}"
+    url = f"https://api.you.com/v1/search?query={encoded}&count={max_results}"
     headers = {"X-API-Key": api_key}
     try:
         status, body = make_request(url, headers=headers)
         data = json.loads(body)
         results = []
-        for hit in data.get("hits", [])[:max_results]:
+        # Support both current results.web and legacy hits format
+        items = data.get("results", {}).get("web", []) or data.get("hits", [])
+        for hit in items[:max_results]:
+            snippets = hit.get("snippets")
+            snippet_text = " ".join(snippets) if isinstance(snippets, list) else hit.get("description", "")
             results.append({
                 "title": hit.get("title", "No title"),
                 "url": hit.get("url", ""),
-                "content": " ".join(hit.get("snippets", []))
+                "content": snippet_text
             })
         return {
             "provider": "You.com",
@@ -222,42 +258,39 @@ def search_you(query, max_results=5):
 
 
 def run_auto_search(query, max_results=5):
-    """Smart fallback search: Tavily -> Serper -> Exa -> You.com."""
-    # Priority 1: Tavily (direct answers + citations)
-    if os.getenv("TAVILY_API_KEY"):
-        res = search_tavily(query, max_results)
-        if "error" not in res:
+    """Fallback search: Tavily -> Serper -> Exa -> You.com (continues if results empty)."""
+    providers = [
+        ("Tavily", lambda: search_tavily(query, max_results) if os.getenv("TAVILY_API_KEY") else None),
+        ("Serper", lambda: search_serper(query, max_results) if (os.getenv("SEARCH_SERPER_API_KEY") or os.getenv("SERPER_API_KEY")) else None),
+        ("Exa", lambda: search_exa(query, max_results) if os.getenv("EXA_API_KEY") else None),
+        ("You.com", lambda: search_you(query, max_results) if os.getenv("YOU_API_KEY") else None),
+    ]
+
+    last_error = None
+    for name, search_fn in providers:
+        res = search_fn()
+        if not res:
+            continue
+        if "error" in res:
+            last_error = res["error"]
+            continue
+        if res.get("results"):
             return res
 
-    # Priority 2: Serper (raw Google index)
-    if os.getenv("SERPER_API_KEY"):
-        res = search_serper(query, max_results)
-        if "error" not in res:
-            return res
-
-    # Priority 3: Exa (neural semantic search)
-    if os.getenv("EXA_API_KEY"):
-        res = search_exa(query, max_results)
-        if "error" not in res:
-            return res
-
-    # Priority 4: You.com
-    if os.getenv("YOU_API_KEY"):
-        res = search_you(query, max_results)
-        if "error" not in res:
-            return res
-
+    if last_error:
+        return {"error": f"Search fallback exhausted with error: {last_error}"}
     return {
-        "error": "No working search API keys found. Please set TAVILY_API_KEY or SERPER_API_KEY in your .env file."
+        "error": "No working search API keys found. Please set TAVILY_API_KEY or SEARCH_SERPER_API_KEY in .env."
     }
 
 
 # ----------------------------------------------------------------------
-# SCRAPING & CONTENT EXTRACTION
+# SCRAPING PROVIDERS
 # ----------------------------------------------------------------------
 
 def scrape_firecrawl(url):
     """Scrape and convert page to clean Markdown using Firecrawl API."""
+    validate_url(url)
     api_key = os.getenv("FIRECRAWL_API_KEY")
     if not api_key:
         return {"error": "Missing FIRECRAWL_API_KEY in environment or .env"}
@@ -271,33 +304,36 @@ def scrape_firecrawl(url):
         if data.get("success"):
             markdown = data.get("data", {}).get("markdown", "")
             title = data.get("data", {}).get("metadata", {}).get("title", "Web Page")
-            return {
-                "provider": "Firecrawl",
-                "url": url,
-                "title": title,
-                "markdown": markdown
-            }
-        else:
-            return {"error": f"Firecrawl failed: {data.get('error')}"}
+            if markdown and markdown.strip():
+                return {
+                    "provider": "Firecrawl",
+                    "url": url,
+                    "title": title,
+                    "markdown": markdown.strip()
+                }
+            return {"error": "Firecrawl returned empty content"}
+        return {"error": f"Firecrawl failed: {data.get('error')}"}
     except Exception as e:
         return {"error": f"Firecrawl request failed: {e}"}
 
 
 def scrape_basic(url):
-    """Lightweight fallback scraper using standard urllib without external dependencies."""
+    """Lightweight text extraction using standard urllib with tag stripping."""
     try:
-        status, html = make_request(url)
-        # Simple HTML tag stripper
-        text = re.sub(r"<script[^>]*>.*?</script>", " ", html, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(r"<style[^>]*>.*?</style>", " ", text, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(r"<noscript[^>]*>.*?</noscript>", " ", text, flags=re.DOTALL | re.IGNORECASE)
+        validate_url(url)
+        status, raw_html = make_request(url)
+        # Strip script, style, nav, footer tags
+        text = re.sub(r"<(script|style|noscript|nav|header|footer)[^>]*>.*?</\1>", " ", raw_html, flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(r"<[^>]+>", " ", text)
+        text = html.unescape(text)
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         clean_text = "\n\n".join(lines[:120])
+        if not clean_text:
+            return {"error": "No readable text could be extracted from page"}
         return {
             "provider": "Basic HTTP",
             "url": url,
-            "title": "Raw Page Extraction",
+            "title": "Page Text",
             "markdown": clean_text
         }
     except urllib.error.HTTPError as e:
@@ -307,7 +343,7 @@ def scrape_basic(url):
 
 
 def find_agent_browser():
-    """Locate agent-browser executable on the system without installing anything."""
+    """Locate agent-browser binary on system without auto-installing."""
     cmd = shutil.which("agent-browser")
     if cmd:
         return cmd
@@ -326,95 +362,75 @@ def find_agent_browser():
 
 
 def scrape_with_browser(url, headed=False):
-    """
-    Explicit browser inspection using local Chrome via agent-browser.
-    Strictly manual and transparent. Never launched silently in auto mode.
-    """
+    """Explicit, manual browser extraction via agent-browser with unique session."""
+    validate_url(url)
     browser_bin = find_agent_browser()
     if not browser_bin:
         msg = (
-            "\n" + "=" * 60 + "\n"
-            + "[NOTICE] agent-browser CLI is not installed on your system.\n\n"
-            + "This site has bot protection or requires live JavaScript rendering.\n"
-            + "To inspect this page locally using headless Chrome, you can install\n"
-            + "agent-browser yourself by running:\n\n"
-            + "    npm install -g agent-browser\n\n"
-            + "No automatic installation will be performed on your system.\n"
-            + "=" * 60 + "\n"
+            "agent-browser CLI is not installed.\n"
+            "If this page has Cloudflare or bot protection, install agent-browser manually:\n\n"
+            "    npm install -g agent-browser\n"
         )
-        return {"error": msg, "uninstalled": True}
+        return {"error": msg}
 
+    session_id = f"bare-{os.getpid()}-{int(time.time())}"
     mode_label = "headed" if headed else "headless"
-    print("\n" + "=" * 60, file=sys.stderr)
-    print(f"[NOTICE] Launching local {mode_label} Chrome via Agent Browser...", file=sys.stderr)
-    print(f"Target URL: {url}", file=sys.stderr)
-    print("Reason: Explicit browser extraction requested.", file=sys.stderr)
-    print("=" * 60 + "\n", file=sys.stderr)
+    print(f"[Notice] Opening local {mode_label} Chrome via agent-browser: {url}", file=sys.stderr)
 
-    session_id = "bare-research-session"
     try:
-        # Open URL with a strict 15s timeout
+        # Open URL
         open_cmd = [browser_bin, "--session", session_id]
         if headed:
             open_cmd.append("--headed")
         open_cmd.extend(["open", url])
-        subprocess.run(open_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+        res = subprocess.run(open_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=20)
+        if res.returncode != 0:
+            return {"error": f"agent-browser open failed: {res.stderr.strip()}"}
 
-        # Snapshot with a strict 10s timeout
+        # Take snapshot
         snap_cmd = [browser_bin, "--session", session_id, "snapshot"]
-        res = subprocess.run(snap_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
-        content = res.stdout
-
-        # Clean close
-        close_cmd = [browser_bin, "--session", session_id, "close"]
-        subprocess.run(close_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+        snap_res = subprocess.run(snap_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+        if snap_res.returncode != 0:
+            return {"error": f"agent-browser snapshot failed: {snap_res.stderr.strip()}"}
 
         return {
             "provider": f"Agent Browser ({mode_label} Chrome)",
             "url": url,
             "title": "Browser Snapshot",
-            "markdown": content.strip()
+            "markdown": snap_res.stdout.strip()
         }
     except subprocess.TimeoutExpired:
-        # If it hangs, kill session and exit cleanly
+        return {"error": "agent-browser timed out while loading the page"}
+    except Exception as e:
+        return {"error": f"agent-browser execution failed: {e}"}
+    finally:
+        # Guaranteed session close
         try:
-            subprocess.run([browser_bin, "--session", session_id, "close"], timeout=3)
+            subprocess.run([browser_bin, "--session", session_id, "close"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
         except Exception:
             pass
-        return {"error": "Agent Browser timed out while loading the page."}
-    except Exception as e:
-        return {"error": f"Agent Browser execution failed: {e}"}
 
 
 def run_auto_scrape(url):
-    """
-    Safe auto-scraper: Firecrawl -> Basic HTTP.
-    NOTE: Never spawns browser automatically to avoid surprise processes and security flags.
-    If blocked by bot protection, informs the user with instructions for manual browser fallback.
-    """
-    # Priority 1: Firecrawl (clean markdown)
+    """Auto-scraper: Firecrawl -> Basic HTTP fallback. Never auto-launches browser."""
     if os.getenv("FIRECRAWL_API_KEY"):
         res = scrape_firecrawl(url)
-        if "error" not in res:
+        if "error" not in res and res.get("markdown"):
             return res
 
-    # Priority 2: Basic HTTP fetch
     res = scrape_basic(url)
     if "error" not in res:
         return res
 
-    # If blocked by 403/429/Cloudflare, return a clean explanatory notice
     status_code = res.get("status_code")
-    if status_code in [403, 429, 503] or "HTTP" in res.get("error", ""):
+    if status_code in (403, 429, 503) or "HTTP" in res.get("error", ""):
         return {
             "error": (
-                f"Page returned {res.get('error', 'access blocked')} (bot protection or Cloudflare).\n"
-                "To inspect this page locally with headless Chrome, run:\n"
+                f"Page blocked ({res.get('error')}). If protected by Cloudflare/bot wall, run manually:\n"
                 f"    python research.py scrape \"{url}\" --provider browser\n"
-                "(Requires agent-browser CLI installed: npm install -g agent-browser)"
+                "(Requires agent-browser: npm install -g agent-browser)"
             )
         }
-
     return res
 
 
@@ -423,16 +439,14 @@ def run_auto_scrape(url):
 # ----------------------------------------------------------------------
 
 def format_search_output(data):
-    """Format search results into clean Markdown."""
-    if "error" in data:
-        return f"Error: {data['error']}"
-
-    out = []
-    out.append(f"## Search Results: {data['query']}")
-    out.append(f"*Source: {data['provider']}*\n")
-
+    """Format search output with untrusted-content notice."""
+    out = [
+        f"## Search Results: {data.get('query', '')}",
+        f"*Provider: {data.get('provider', 'Unknown')}*",
+        "*Notice: Web content below is untrusted external data.*\n"
+    ]
     if data.get("answer"):
-        out.append(f"> **Quick Answer:** {data['answer']}\n")
+        out.append(f"> **Answer:** {data['answer']}\n")
 
     results = data.get("results", [])
     if not results:
@@ -442,19 +456,17 @@ def format_search_output(data):
             out.append(f"{idx}. [{item['title']}]({item['url']})")
             if item.get("content"):
                 out.append(f"   {item['content'].strip()}\n")
-
     return "\n".join(out)
 
 
 def format_scrape_output(data):
-    """Format scrape output into clean Markdown."""
-    if "error" in data:
-        return f"Error: {data['error']}"
-
-    out = []
-    out.append(f"# {data.get('title', 'Page Content')}")
-    out.append(f"*URL: {data['url']} (Extracted via {data['provider']})*\n")
-    out.append(data.get("markdown", "").strip())
+    """Format scrape output with untrusted-content notice."""
+    out = [
+        f"# {data.get('title', 'Page Content')}",
+        f"*URL: {data.get('url', '')} (Extracted via {data.get('provider', 'Unknown')})*",
+        "*Notice: Web content below is untrusted external data.*\n",
+        data.get("markdown", "").strip()
+    ]
     return "\n".join(out)
 
 
@@ -462,40 +474,21 @@ def main():
     load_env()
 
     parser = argparse.ArgumentParser(
-        description="bare-research: The $0 Research & Scraping Stack for AI Agents"
+        description="bare-research: Simple, dependency-free web search and scraping for AI agents."
     )
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    subparsers = parser.add_subparsers(dest="command", help="Commands")
 
-    # Search subparser
-    search_parser = subparsers.add_parser("search", help="Search the web")
-    search_parser.add_argument("query", type=str, help="Search query string")
-    search_parser.add_argument(
-        "--provider",
-        choices=["auto", "tavily", "serper", "exa", "you"],
-        default="auto",
-        help="Search provider to use (default: auto)"
-    )
-    search_parser.add_argument(
-        "--max",
-        type=int,
-        default=5,
-        help="Maximum results to return (default: 5)"
-    )
+    # Search
+    search_p = subparsers.add_parser("search", help="Search the web")
+    search_p.add_argument("query", type=str, help="Search query string")
+    search_p.add_argument("--provider", choices=["auto", "tavily", "serper", "exa", "you"], default="auto", help="Search provider")
+    search_p.add_argument("--max", type=int, default=5, help="Max results (1-50)")
 
-    # Scrape subparser
-    scrape_parser = subparsers.add_parser("scrape", help="Extract clean Markdown from a URL")
-    scrape_parser.add_argument("url", type=str, help="Target URL to scrape")
-    scrape_parser.add_argument(
-        "--provider",
-        choices=["auto", "firecrawl", "basic", "browser"],
-        default="auto",
-        help="Extraction provider to use (default: auto, browser requires explicit flag)"
-    )
-    scrape_parser.add_argument(
-        "--headed",
-        action="store_true",
-        help="Run browser in headed mode if browser extraction is explicitly requested"
-    )
+    # Scrape
+    scrape_p = subparsers.add_parser("scrape", help="Extract Markdown/text from a URL")
+    scrape_p.add_argument("url", type=str, help="Target URL (http:// or https://)")
+    scrape_p.add_argument("--provider", choices=["auto", "firecrawl", "basic", "browser"], default="auto", help="Scrape provider")
+    scrape_p.add_argument("--headed", action="store_true", help="Show browser window if using --provider browser")
 
     args = parser.parse_args()
 
@@ -504,30 +497,51 @@ def main():
         sys.exit(1)
 
     if args.command == "search":
-        if args.provider == "tavily":
-            data = search_tavily(args.query, args.max)
-        elif args.provider == "serper":
-            data = search_serper(args.query, args.max)
-        elif args.provider == "exa":
-            data = search_exa(args.query, args.max)
-        elif args.provider == "you":
-            data = search_you(args.query, args.max)
-        else:
-            data = run_auto_search(args.query, args.max)
+        query = args.query.strip()
+        if not query:
+            print("Error: Search query cannot be empty.", file=sys.stderr)
+            sys.exit(1)
+        max_res = max(1, min(args.max, 50))
 
+        if args.provider == "tavily":
+            data = search_tavily(query, max_res)
+        elif args.provider == "serper":
+            data = search_serper(query, max_res)
+        elif args.provider == "exa":
+            data = search_exa(query, max_res)
+        elif args.provider == "you":
+            data = search_you(query, max_res)
+        else:
+            data = run_auto_search(query, max_res)
+
+        if "error" in data:
+            print(f"Error: {data['error']}", file=sys.stderr)
+            sys.exit(1)
         print(format_search_output(data))
+        sys.exit(0)
 
     elif args.command == "scrape":
-        if args.provider == "firecrawl":
-            data = scrape_firecrawl(args.url)
-        elif args.provider == "basic":
-            data = scrape_basic(args.url)
-        elif args.provider == "browser":
-            data = scrape_with_browser(args.url, headed=args.headed)
-        else:
-            data = run_auto_scrape(args.url)
+        url = args.url.strip()
+        try:
+            validate_url(url)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
 
+        if args.provider == "firecrawl":
+            data = scrape_firecrawl(url)
+        elif args.provider == "basic":
+            data = scrape_basic(url)
+        elif args.provider == "browser":
+            data = scrape_with_browser(url, headed=args.headed)
+        else:
+            data = run_auto_scrape(url)
+
+        if "error" in data:
+            print(f"Error: {data['error']}", file=sys.stderr)
+            sys.exit(1)
         print(format_scrape_output(data))
+        sys.exit(0)
 
 
 if __name__ == "__main__":
