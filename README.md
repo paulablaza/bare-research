@@ -118,4 +118,4 @@ python research.py scrape "https://protected-site.com" --provider browser
 
 ## License
 
-MIT License - Copyright (c) 2026 Paul Ablaza and Barestack Labs contributors. See [LICENSE](LICENSE) for details.
+MIT License - Copyright (c) 2026 Paul Martin Ablaza and Barestack Labs contributors. See [LICENSE](LICENSE) for details.
